@@ -44,4 +44,9 @@ class Clinic extends \yii\db\ActiveRecord
         ];
     }
 
+    public function getProfessional()
+    {
+        return $this->hasOne(Professional::class, ['id'=>'professional_id']);
+    }
+
 }

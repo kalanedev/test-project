@@ -44,5 +44,12 @@ $this->params['breadcrumbs'][] = $this->title;
         ],
     ]); ?>
 
+    <button>Cadastrar clínica</button>
+    <div class="cadastro-clinicas">
+        
+
+        
+    </div>
+
 
 </div>

@@ -44,7 +44,7 @@ class Professional extends \yii\db\ActiveRecord
         return [
             [['name', 'advice', 'advice_number', 'birthdate', 'status'], 'required'],
             [['advice'], 'string'],
-            [['birthdate'], 'safe'],
+            [['birthdate'], 'date', 'format' => 'php:d-m-Y'],
             [['status'], 'string'],
             [['name', 'advice_number'], 'string', 'max' => 255],
             ['advice', 'in', 'range' => array_keys(self::optsAdvice())],
@@ -190,8 +190,4 @@ class Professional extends \yii\db\ActiveRecord
         return $this->hasMany(Clinic::class, ['professional_id'=>'id']);
     }
 
-    public function getProfessional()
-    {
-        return $this->hasOne(Professional::class, ['id'=>'professional_id']);
-    }
 }

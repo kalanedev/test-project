@@ -18,7 +18,7 @@ class ProfessionalSearch extends Professional
     {
         return [
             [['id'], 'integer'],
-            [['name', 'advice', 'advice_number', 'birthdate', 'stats'], 'safe'],
+            [['name', 'advice', 'advice_number', 'birthdate', 'status'], 'safe'],
         ];
     }
 
@@ -66,7 +66,7 @@ class ProfessionalSearch extends Professional
         $query->andFilterWhere(['like', 'name', $this->name])
             ->andFilterWhere(['like', 'advice', $this->advice])
             ->andFilterWhere(['like', 'advice_number', $this->advice_number])
-            ->andFilterWhere(['like', 'stats', $this->stats]);
+            ->andFilterWhere(['like', 'status', $this->status]);
         return $dataProvider;
     }
 }

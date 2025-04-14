@@ -34,7 +34,7 @@ $this->params['breadcrumbs'][] = $this->title;
             'advice',
             'advice_number',
             'birthdate',
-            'stats',
+            'status',
             [
                 'class' => ActionColumn::className(),
                 'urlCreator' => function ($action, Professional $model, $key, $index, $column) {

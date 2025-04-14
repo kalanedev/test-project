@@ -12,7 +12,7 @@ use Yii;
  * @property string $advice
  * @property string $advice_number
  * @property string $birthdate
- * @property string $stats
+ * @property string $status
  */
 class Professional extends \yii\db\ActiveRecord
 {
@@ -25,8 +25,8 @@ class Professional extends \yii\db\ActiveRecord
     const ADVICE_CRN = 'CRN';
     const ADVICE_COREN = 'COREN';
 
-    const STATS_ACTIVE = 'active';
-    const STATS_INACTIVE = 'inactive';
+    const STATUS_ACTIVE = 'active';
+    const STATUS_INACTIVE = 'inactive';
 
     /**
      * {@inheritdoc}
@@ -42,13 +42,13 @@ class Professional extends \yii\db\ActiveRecord
     public function rules()
     {
         return [
-            [['name', 'advice', 'advice_number', 'birthdate', 'stats'], 'required'],
+            [['name', 'advice', 'advice_number', 'birthdate', 'status'], 'required'],
             [['advice'], 'string'],
             [['birthdate'], 'safe'],
-            [['stats'], 'string'],
+            [['status'], 'string'],
             [['name', 'advice_number'], 'string', 'max' => 255],
             ['advice', 'in', 'range' => array_keys(self::optsAdvice())],
-            ['stats', 'in', 'range' => array_keys(self::optsStats())],
+            ['status', 'in', 'range' => array_keys(self::optsStatus())],
         ];
     }
 
@@ -63,7 +63,7 @@ class Professional extends \yii\db\ActiveRecord
             'advice' => 'Advice',
             'advice_number' => 'Advice Number',
             'birthdate' => 'Birthdate',
-            'stats' => 'Stats',
+            'status' => 'Status',
         ];
     }
 
@@ -143,46 +143,46 @@ class Professional extends \yii\db\ActiveRecord
     }
 
     /**
-     * column stats ENUM value labels
+     * column status ENUM value labels
      * @return string[]
      */
-    public static function optsStats()
+    public static function optsStatus()
     {
         return [
-            self::STATS_ACTIVE => 'active',
-            self::STATS_INACTIVE => 'inactive',
+            self::STATUS_ACTIVE => 'active',
+            self::STATUS_INACTIVE => 'inactive',
         ];
     }
 
     /**
      * @return string
      */
-    public function displayStats()
+    public function displayStatus()
     {
-        return self::optsStats()[$this->stats];
+        return self::optsStatus()[$this->status];
     }
 
     /**
      * @return bool
      */
-    public function isStatsActive()
+    public function isStatusActive()
     {
-        return $this->stats === self::STATS_ACTIVE;
+        return $this->status === self::STATUS_ACTIVE;
     }
 
-    public function setStatsToActive()
+    public function setStatusToActive()
     {
-        $this->stats = self::STATS_ACTIVE;
+        $this->status = self::STATUS_ACTIVE;
     }
 
-    public function isStatsInactive()
+    public function isStatusInactive()
     {
-        return $this->stats === self::STATS_INACTIVE;
+        return $this->status === self::STATUS_INACTIVE;
     }
 
-    public function setStatsToInactive()
+    public function setStatusToInactive()
     {
-        $this->stats = self::STATS_INACTIVE;
+        $this->status = self::STATUS_INACTIVE;
     }
 
     public function getClinics()

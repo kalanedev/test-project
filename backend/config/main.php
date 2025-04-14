@@ -37,14 +37,20 @@ return [
         'errorHandler' => [
             'errorAction' => 'site/error',
         ],
-        /*
+
         'urlManager' => [
             'enablePrettyUrl' => true,
             'showScriptName' => false,
             'rules' => [
+                'clinics' => 'clinic/index',
+                'clinic/<id:\d+>' => 'clinic/view',
+                'clinic/edit/<id:\d+>' => 'clinic/update',
+                'professionals' => 'professional/index',
+                'professional/<id:\d+>' => 'professional/view',
+                'professional/edit/<id:\d+>' => 'professional/update',
             ],
         ],
-        */
+
     ],
     'params' => $params,
 ];

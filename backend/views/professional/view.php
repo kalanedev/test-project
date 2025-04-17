@@ -2,6 +2,8 @@
 
 use yii\helpers\Html;
 use yii\widgets\DetailView;
+use yii\bootstrap5\Modal;
+use yii\helpers\Url;
 
 /** @var yii\web\View $this */
 /** @var common\models\Professional $model */
@@ -34,8 +36,65 @@ $this->params['breadcrumbs'][] = $this->title;
             'advice',
             'advice_number',
             'birthdate',
-            'status',
+           [
+            'attribute' => 'status',
+            'value' => $model->status ? 'active' : 'inactive',
+           ]
         ],
     ]) ?>
 
-</div>
+    <div class="row">
+        <div class="col-md-12">
+            <?= Html::button(
+                'Bond Clinics',
+                [
+                    'id' => 'show-clinics-btn',
+                    'class' => 'btn btn-primary'
+                ]
+            )
+            ?>
+        </div>
+    </div>
+
+    <?php 
+        Modal::begin([
+            'id' =>'clinics-modal',
+            'title' => '<h4>Bond clinics</h4>',
+            'size' => 'lg',
+            'options' => [
+                'tabindex' => false,
+                'aria-labelledby' => 'clinics-modal-label',
+            ],
+            'bodyOptions' => [
+                'id' => 'clinics-content',
+            ],
+        ]);
+
+        Modal::end();
+    ?>
+
+    <?php
+
+    $clinicsUrl = Url::to(['professional/clinics', 'id' => $model->id]);
+
+    $js = <<<JS
+    $('#show-clinics-btn').on('click', function() {
+        $.ajax({
+            url:'$clinicsUrl',
+            type: 'GET',
+            success: function(response){
+                $('#clinics-content').html(response);
+                var myModal = new bootstrap.Modal(document.getElementById('clinics-modal'));
+                myModal.show();
+        },
+        error: function(xhr) {
+            alert('Failed to load clinics.');
+            console.error(xhr.responseText);
+        }
+    });
+});
+
+JS;
+
+$this->registerJs($js);
+?>

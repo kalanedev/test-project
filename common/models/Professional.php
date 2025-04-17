@@ -11,8 +11,8 @@ use Yii;
  * @property string $name
  * @property string $advice
  * @property string $advice_number
- * @property string $birthdate
- * @property string $status
+ * @property date $birthdate
+ * @property boolean $status
  */
 class Professional extends \yii\db\ActiveRecord
 {
@@ -24,9 +24,6 @@ class Professional extends \yii\db\ActiveRecord
     const ADVICE_CRO = 'CRO';
     const ADVICE_CRN = 'CRN';
     const ADVICE_COREN = 'COREN';
-
-    const STATUS_ACTIVE = 'active';
-    const STATUS_INACTIVE = 'inactive';
 
     /**
      * {@inheritdoc}
@@ -44,11 +41,11 @@ class Professional extends \yii\db\ActiveRecord
         return [
             [['name', 'advice', 'advice_number', 'birthdate', 'status'], 'required'],
             [['advice'], 'string'],
-            [['birthdate'], 'date', 'format' => 'php:d-m-Y'],
-            [['status'], 'string'],
+            [['advice_number'], 'integer'],
+            [['birthdate'], 'date', 'format' => 'php:Y-m-d'],
+            [['status'], 'boolean'],
             [['name', 'advice_number'], 'string', 'max' => 255],
             ['advice', 'in', 'range' => array_keys(self::optsAdvice())],
-            ['status', 'in', 'range' => array_keys(self::optsStatus())],
         ];
     }
 
@@ -142,52 +139,14 @@ class Professional extends \yii\db\ActiveRecord
         $this->advice = self::ADVICE_COREN;
     }
 
-    /**
-     * column status ENUM value labels
-     * @return string[]
-     */
-    public static function optsStatus()
-    {
-        return [
-            self::STATUS_ACTIVE => 'active',
-            self::STATUS_INACTIVE => 'inactive',
-        ];
-    }
-
-    /**
-     * @return string
-     */
-    public function displayStatus()
-    {
-        return self::optsStatus()[$this->status];
-    }
-
-    /**
-     * @return bool
-     */
-    public function isStatusActive()
-    {
-        return $this->status === self::STATUS_ACTIVE;
-    }
-
-    public function setStatusToActive()
-    {
-        $this->status = self::STATUS_ACTIVE;
-    }
-
-    public function isStatusInactive()
-    {
-        return $this->status === self::STATUS_INACTIVE;
-    }
-
-    public function setStatusToInactive()
-    {
-        $this->status = self::STATUS_INACTIVE;
-    }
-
     public function getClinics()
     {
-        return $this->hasMany(Clinic::class, ['professional_id'=>'id']);
+        return $this->hasMany(Clinic::class, ['clinic_id'=>'id'])->viaTable('professional_clinic', ['professional_id'=>'id']);
+    }
+
+    public function getProfessionalClinics()
+    {
+        return $this->hasMany(ProfessionalClinic::class, ['professional_id'=>'id']);
     }
 
 }

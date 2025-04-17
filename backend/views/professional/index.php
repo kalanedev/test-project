@@ -34,7 +34,10 @@ $this->params['breadcrumbs'][] = $this->title;
             'advice',
             'advice_number',
             'birthdate',
-            'status',
+            ['attribute' => 'status',
+            'value' => function ($model) {
+                return $model->status ? 'active' : 'inactive';
+            }],
             [
                 'class' => ActionColumn::className(),
                 'urlCreator' => function ($action, Professional $model, $key, $index, $column) {
@@ -43,13 +46,6 @@ $this->params['breadcrumbs'][] = $this->title;
             ],
         ],
     ]); ?>
-
-    <button>Cadastrar clínica</button>
-    <div class="cadastro-clinicas">
-        
-
-        
-    </div>
 
 
 </div>

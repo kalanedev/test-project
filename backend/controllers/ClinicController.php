@@ -2,7 +2,10 @@
 
 namespace backend\controllers;
 
+use Yii;
 use common\models\Clinic;
+use common\models\Professional;
+use common\models\ProfessionalClinic;
 use backend\models\ClinicSearch;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
@@ -18,17 +21,15 @@ class ClinicController extends Controller
      */
     public function behaviors()
     {
-        return array_merge(
-            parent::behaviors(),
-            [
+        return[
                 'verbs' => [
                     'class' => VerbFilter::className(),
                     'actions' => [
                         'delete' => ['POST'],
+                        'update' => ['GET', 'POST'],
                     ],
                 ],
-            ]
-        );
+            ];
     }
 
     /**
@@ -93,14 +94,41 @@ class ClinicController extends Controller
     {
         $model = $this->findModel($id);
 
-        if ($this->request->isPost && $model->load($this->request->post()) && $model->save()) {
-            return $this->redirect(['view', 'id' => $model->id]);
+        if(Yii::$app->request->isAjax){
+
+            if ($model->load(Yii::$app->request->post()) && $model->save()) {
+                $professionalClinic = ProfessionalClinic::findOne(['clinic_id' => $id]);
+                $professionalId = $professionalClinic ?$professionalClinic->professional_id : null;
+
+                if ($professionalId) {
+                    $professional = Professional::findOne($professionalId);
+                    $searchModel = new ClinicSearch();
+                    $dataProvider = $searchModel->search(Yii::$app->request->queryParams, $professionalId);
+                    
+                return $this->renderAjax('/professional/_clinics', [
+                    'professional' => $professional,
+                    'searchModel' => $searchModel,
+                    'dataProvider' => $dataProvider,
+                ]);
+            }
+
+            return '<div class="alert alert-success">Clinic updated successfully!</div>';
         }
 
-        return $this->render('update', [
+        return $this->renderAjax('_form', [
             'model' => $model,
+            'isModal' => true,
         ]);
     }
+    if ($model->load(Yii::$app->request->post()) && $model->save()) {
+        return $this->redirect(['view', 'id' => $model->id]);
+    }
+
+    return $this->render('update', [
+        'model' => $model,
+    ]);
+}
+
 
     /**
      * Deletes an existing Clinic model.

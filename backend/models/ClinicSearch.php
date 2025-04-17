@@ -39,17 +39,28 @@ class ClinicSearch extends Clinic
      *
      * @return ActiveDataProvider
      */
-    public function search($params, $formName = null)
+    public function search($params, $professionalId = null)
     {
         $query = Clinic::find();
 
+        if ($professionalId !== null) {
+            $query->joinWith('professionalClinics')->where(['professional_clinic.professional_id' => $professionalId]);
+        }
         // add conditions that should always apply here
 
         $dataProvider = new ActiveDataProvider([
             'query' => $query,
+            'sort' => [
+                'defaultOrder' => [
+                    'description' => SORT_ASC,
+                ]
+            ],
+            'pagination' => [
+                'pageSize' => 10,
+            ],
         ]);
 
-        $this->load($params, $formName);
+        $this->load($params);
 
         if (!$this->validate()) {
             // uncomment the following line if you do not want to return any records when validation fails
@@ -62,7 +73,8 @@ class ClinicSearch extends Clinic
             'id' => $this->id,
         ]);
 
-        $query->andFilterWhere(['like', 'description', $this->description]);
+        $query->andFilterWhere(['like', 'clinic.id', $this->id]);
+        $query->andFilterWhere(['like', 'clinic.description', $this->description]);  
 
         return $dataProvider;
     }

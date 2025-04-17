@@ -44,9 +44,13 @@ class Clinic extends \yii\db\ActiveRecord
         ];
     }
 
-    public function getProfessional()
+    public function getProfessionals()
     {
-        return $this->hasOne(Professional::class, ['id'=>'professional_id']);
+        return $this->hasMany(Professional::class, ['id'=>'professional_id'])->viaTable('professional_clinic', ['clinic_id'=>'id']);
     }
 
+    public function getProfessionalClinics()
+    {
+        return $this->hasMany(ProfessionalClinic::class, ['clinic_id'=>'id']);
+    }
 }

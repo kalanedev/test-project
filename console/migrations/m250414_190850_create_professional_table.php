@@ -17,7 +17,7 @@ class m250414_190850_create_professional_table extends Migration
             'name' => $this->string()->notNull(),
             'advice' => $this->string()->notNull(),
             'advice_number' => $this->string()->notNull(),
-            'birthdate' => $this->timestamp()->notNull(),
+            'birthdate' => $this->date()->notNull(),
             'status' => $this->boolean()->notNull(),
             'created_at' => $this->timestamp() ]);
             

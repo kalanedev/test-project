@@ -48,6 +48,7 @@ return [
                 'professionals' => 'professional/index',
                 'professional/<id:\d+>' => 'professional/view',
                 'professional/edit/<id:\d+>' => 'professional/update',
+                'clinic/update' => 'clinic/update'
             ],
         ],
 

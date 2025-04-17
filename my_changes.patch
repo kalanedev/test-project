@@ -1,0 +1,1030 @@
+diff --git a/backend/config/main.php b/backend/config/main.php
+index c565420..0950d2d 100755
+--- a/backend/config/main.php
++++ b/backend/config/main.php
+@@ -48,6 +48,7 @@ return [
+                 'professionals' => 'professional/index',
+                 'professional/<id:\d+>' => 'professional/view',
+                 'professional/edit/<id:\d+>' => 'professional/update',
++                'clinic/update' => 'clinic/update'
+             ],
+         ],
+ 
+diff --git a/backend/config/params.php b/backend/config/params.php
+index 7f754b9..38b81bc 100755
+--- a/backend/config/params.php
++++ b/backend/config/params.php
+@@ -1,4 +1,5 @@
+ <?php
+ return [
++    'bsVersion' => '5.x',
+     'adminEmail' => 'admin@example.com',
+ ];
+diff --git a/backend/controllers/ClinicController.php b/backend/controllers/ClinicController.php
+index 96bcc2c..c0935c8 100755
+--- a/backend/controllers/ClinicController.php
++++ b/backend/controllers/ClinicController.php
+@@ -2,7 +2,10 @@
+ 
+ namespace backend\controllers;
+ 
++use Yii;
+ use common\models\Clinic;
++use common\models\Professional;
++use common\models\ProfessionalClinic;
+ use backend\models\ClinicSearch;
+ use yii\web\Controller;
+ use yii\web\NotFoundHttpException;
+@@ -18,17 +21,15 @@ class ClinicController extends Controller
+      */
+     public function behaviors()
+     {
+-        return array_merge(
+-            parent::behaviors(),
+-            [
++        return[
+                 'verbs' => [
+                     'class' => VerbFilter::className(),
+                     'actions' => [
+                         'delete' => ['POST'],
++                        'update' => ['GET', 'POST'],
+                     ],
+                 ],
+-            ]
+-        );
++            ];
+     }
+ 
+     /**
+@@ -93,14 +94,41 @@ class ClinicController extends Controller
+     {
+         $model = $this->findModel($id);
+ 
+-        if ($this->request->isPost && $model->load($this->request->post()) && $model->save()) {
+-            return $this->redirect(['view', 'id' => $model->id]);
++        if(Yii::$app->request->isAjax){
++
++            if ($model->load(Yii::$app->request->post()) && $model->save()) {
++                $professionalClinic = ProfessionalClinic::findOne(['clinic_id' => $id]);
++                $professionalId = $professionalClinic ?$professionalClinic->professional_id : null;
++
++                if ($professionalId) {
++                    $professional = Professional::findOne($professionalId);
++                    $searchModel = new ClinicSearch();
++                    $dataProvider = $searchModel->search(Yii::$app->request->queryParams, $professionalId);
++                    
++                return $this->renderAjax('/professional/_clinics', [
++                    'professional' => $professional,
++                    'searchModel' => $searchModel,
++                    'dataProvider' => $dataProvider,
++                ]);
++            }
++
++            return '<div class="alert alert-success">Clinic updated successfully!</div>';
+         }
+ 
+-        return $this->render('update', [
++        return $this->renderAjax('_form', [
+             'model' => $model,
++            'isModal' => true,
+         ]);
+     }
++    if ($model->load(Yii::$app->request->post()) && $model->save()) {
++        return $this->redirect(['view', 'id' => $model->id]);
++    }
++
++    return $this->render('update', [
++        'model' => $model,
++    ]);
++}
++
+ 
+     /**
+      * Deletes an existing Clinic model.
+diff --git a/backend/controllers/ProfessionalController.php b/backend/controllers/ProfessionalController.php
+index ee0c088..81a2bb7 100755
+--- a/backend/controllers/ProfessionalController.php
++++ b/backend/controllers/ProfessionalController.php
+@@ -2,11 +2,17 @@
+ 
+ namespace backend\controllers;
+ 
++use Yii;
+ use common\models\Professional;
++use common\models\Clinic;
++use common\models\ProfessionalClinic;
+ use backend\models\ProfessionalSearch;
++use backend\models\ClinicSearch;
+ use yii\web\Controller;
+ use yii\web\NotFoundHttpException;
+ use yii\filters\VerbFilter;
++use yii\web\Response;
++
+ 
+ /**
+  * ProfessionalController implements the CRUD actions for Professional model.
+@@ -25,6 +31,8 @@ class ProfessionalController extends Controller
+                     'class' => VerbFilter::className(),
+                     'actions' => [
+                         'delete' => ['POST'],
++                        'delete-relation' => ['POST'],
++                        'add-clinic' => ['GET', 'POST'],
+                     ],
+                 ],
+             ]
+@@ -116,6 +124,123 @@ class ProfessionalController extends Controller
+         return $this->redirect(['index']);
+     }
+ 
++    public function actionClinics($id){
++        $professional = $this->findModel($id);
++        $searchModel = new ClinicSearch();
++        $dataProvider = $searchModel->search(Yii::$app->request->queryParams, $id);
++
++        return $this->renderAjax('_clinics', [
++            'professional' => $professional,
++            'searchModel' => $searchModel,
++            'dataProvider' => $dataProvider,
++        ]);
++    }
++
++    public function actionAddClinic($professionalId)
++{
++    try {
++        // Find the professional model
++        $professional = $this->findModel($professionalId);
++        $model = new ProfessionalClinic();
++        $model->professional_id = $professionalId;
++        
++        // For GET requests - display the form
++        if (Yii::$app->request->isGet) {
++            $existingClinicIds = ProfessionalClinic::find()
++                ->select('clinic_id')
++                ->where(['professional_id' => $professionalId])
++                ->column();
++            
++            $availableClinics = Clinic::find()
++                ->where(['not in', 'id', $existingClinicIds])
++                ->all();
++            
++            return $this->renderAjax('_addClinic', [
++                'model' => $model,
++                'professional' => $professional,
++                'availableClinics' => $availableClinics,
++            ]);
++        }
++        
++        // For POST requests - handle form submission
++        if (Yii::$app->request->isPost) {
++            Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
++            
++            if ($model->load(Yii::$app->request->post())) {
++                // Set created_at manually if needed
++                if (isset($model->created_at)) {
++                    $model->created_at = date('Y-m-d H:i:s');
++                }
++                
++                if ($model->save()) {
++                    return [
++                        'success' => true,
++                        'message' => 'Clinic added successfully.'
++                    ];
++                } else {
++                    return [
++                        'success' => false,
++                        'errors' => $model->getErrors(),
++                        'message' => 'Failed to save the clinic link.'
++                    ];
++                }
++            } else {
++                return [
++                    'success' => false,
++                    'message' => 'No data received.'
++                ];
++            }
++        }
++        
++        // Default fallback for other request types
++        Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
++        return [
++            'success' => false,
++            'message' => 'Invalid request method.'
++        ];
++    }
++    catch (\Exception $e) {
++        Yii::error("Exception in actionAddClinic: " . $e->getMessage() . "\n" . $e->getTraceAsString(), 'application');
++        
++        if (Yii::$app->request->isAjax) {
++            Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
++            return [
++                'success' => false,
++                'message' => 'Exception: ' . $e->getMessage(),
++                'trace' => YII_DEBUG ? $e->getTraceAsString() : null
++            ];
++        }
++        
++        throw $e;
++    }
++}
++    public function actionDeleteRelation($professionalId, $clinicId){
++        $model = ProfessionalClinic::findOne([
++            'professional_id' => $professionalId,
++            'clinic_id' => $clinicId
++        ]);
++
++        if($model) {
++            $model->delete();
++            Yii::$app->session->setFlash('success', 'Bond deleted.');
++        } else {
++            Yii::$app->session->setFlash('error', 'Bond not found.');
++        }
++
++        if(Yii::$app->request->isPjax) {
++            $professional = $this->findModel($professionalId);
++            $searchModel = new ClinicSearch();
++            $dataProvider = $searchModel->search(Yii::$app->request->queryParams, $professionalId);
++
++        return $this->renderAjax('_clinics', [
++            'professional' => $professional,
++            'searchModel' => $searchModel,
++            'dataProvider' => $dataProvider,
++        ]);
++    }
++
++    return $this->redirect(['view', 'id' => $professionalId]);
++}
+     /**
+      * Finds the Professional model based on its primary key value.
+      * If the model is not found, a 404 HTTP exception will be thrown.
+diff --git a/backend/models/ClinicSearch.php b/backend/models/ClinicSearch.php
+index 4dff7d8..84df82c 100755
+--- a/backend/models/ClinicSearch.php
++++ b/backend/models/ClinicSearch.php
+@@ -39,17 +39,28 @@ class ClinicSearch extends Clinic
+      *
+      * @return ActiveDataProvider
+      */
+-    public function search($params, $formName = null)
++    public function search($params, $professionalId = null)
+     {
+         $query = Clinic::find();
+ 
++        if ($professionalId !== null) {
++            $query->joinWith('professionalClinics')->where(['professional_clinic.professional_id' => $professionalId]);
++        }
+         // add conditions that should always apply here
+ 
+         $dataProvider = new ActiveDataProvider([
+             'query' => $query,
++            'sort' => [
++                'defaultOrder' => [
++                    'description' => SORT_ASC,
++                ]
++            ],
++            'pagination' => [
++                'pageSize' => 10,
++            ],
+         ]);
+ 
+-        $this->load($params, $formName);
++        $this->load($params);
+ 
+         if (!$this->validate()) {
+             // uncomment the following line if you do not want to return any records when validation fails
+@@ -62,7 +73,8 @@ class ClinicSearch extends Clinic
+             'id' => $this->id,
+         ]);
+ 
+-        $query->andFilterWhere(['like', 'description', $this->description]);
++        $query->andFilterWhere(['like', 'clinic.id', $this->id]);
++        $query->andFilterWhere(['like', 'clinic.description', $this->description]);  
+ 
+         return $dataProvider;
+     }
+diff --git a/backend/views/clinic/_form.php b/backend/views/clinic/_form.php
+index fc186ef..738e647 100755
+--- a/backend/views/clinic/_form.php
++++ b/backend/views/clinic/_form.php
+@@ -2,6 +2,7 @@
+ 
+ use yii\helpers\Html;
+ use yii\widgets\ActiveForm;
++use yii\helpers\Url;
+ 
+ /** @var yii\web\View $this */
+ /** @var common\models\Clinic $model */
+@@ -10,14 +11,63 @@ use yii\widgets\ActiveForm;
+ 
+ <div class="clinic-form">
+ 
+-    <?php $form = ActiveForm::begin(); ?>
++    <?php 
++        $options = isset($isModal) && $isModal ? ['data-pjax' => '0'] : [];
++        $form = ActiveForm::begin([
++            'id' => 'clinic-form',
++            'options' => $options,
++        ]);
++    ?>
+ 
+     <?= $form->field($model, 'description')->textInput(['maxlength' => true]) ?>
+ 
+     <div class="form-group">
+         <?= Html::submitButton('Save', ['class' => 'btn btn-success']) ?>
++    
++        <?php if (isset($isModal) && $isModal): ?>
++            <?= Html::button('Cancel', [
++                'class' => 'btn btn-default',
++                'id' => 'cancel-edit-btn',
++            ]) ?>
++        <?php endif; ?>
+     </div>
+ 
+     <?php ActiveForm::end(); ?>
+-
+ </div>
++
++<?php if (isset($isModal) && $isModal): ?>
++<?php
++$js = <<<JS
++$('#clinic-form').on('beforeSubmit', function(e) {
++    e.preventDefault();
++    var form = $(this);
++    
++    $.ajax({
++        url: form.attr('action'),
++        type: 'POST',
++        data: form.serialize(),
++        success: function(response) {
++            $('#clinics-content').html(response);
++        }
++    });
++    return false;
++});
++
++$('#cancel-edit-btn').on('click', function() {
++    $.ajax({
++        url: '
++JS;
++$js .= Url::to(['professional/clinics']);
++$js .= <<<JS
++' + '?id=' + professionalId,
++        type: 'GET',
++        success: function(response) {
++            $('#clinics-content').html(response);
++        }
++    });
++});
++JS;
++
++$this->registerJs($js);
++?>
++<?php endif; ?>
+diff --git a/backend/views/professional/_addClinic.php b/backend/views/professional/_addClinic.php
+new file mode 100644
+index 0000000..b6ece35
+--- /dev/null
++++ b/backend/views/professional/_addClinic.php
+@@ -0,0 +1,78 @@
++<?php
++use yii\helpers\Html;
++use yii\widgets\ActiveForm;
++use yii\helpers\ArrayHelper;
++?>
++
++<div class="add-clinic-form">
++    <h3>Add Clinic to Professional: <?= Html::encode($professional->name) ?></h3>
++    
++    <?php $form = ActiveForm::begin([
++        'id' => 'add-clinic-form',
++        'action' => ['professional/add-clinic', 'professionalId' => $professional->id],
++        'options' => ['data-pjax' => true],
++    ]); ?>
++    
++    <?= $form->field($model, 'clinic_id')->dropDownList(
++        ArrayHelper::map($availableClinics, 'id', 'description'),
++        ['prompt' => 'Select a clinic...']
++    ) ?>
++    
++    <div class="form-group">
++        <?= Html::submitButton('Add', ['class' => 'btn btn-success']) ?>
++        <?= Html::button('Cancel', [
++            'class' => 'btn btn-secondary',
++            'id' => 'cancel-add-btn',
++            'data-bs-dismiss' => 'modal',
++        ]) ?>
++    </div>
++    
++    <?php ActiveForm::end(); ?>
++</div>
++
++<?php
++    $cancelUrl = \yii\helpers\Url::to(['professional/clinics', 'id' => $professional->id]);
++    $js = <<<JS
++    $('#add-clinic-form').on('submit', function(e) {
++    e.preventDefault();
++    var formData = $(this).serialize();
++    
++    $.ajax({
++        url: $(this).attr('action'),
++        type: 'POST',
++        data: formData,
++        dataType: 'json',
++        success: function(response) {
++            console.log("Server Response:", response);
++            if (response && response.success === true) {
++                // Simple alert for testing
++                alert('Clinic added.');
++                
++                location.reload(); // Simple solution
++            } else {
++                alert(response.message || 'Error adding clinic');
++                console.error("Errors:", response.errors);
++            }
++        },
++        error: function(xhr, status, error) {
++            console.error("AJAX error:", error);
++            console.error("Response:", xhr.responseText);
++            alert('There was an error while submitting the form: ' + error);
++        }
++    });
++});
++    
++    $('#cancel-add-btn').on('click', function() {
++        $.ajax({
++            url: '{$cancelUrl}',
++            type: 'GET',
++            success: function(response) {
++                $('#clinics-content').html(response);
++            }
++        });
++    });
++JS;
++
++$this->registerJs($js);
++
++?>
+\ No newline at end of file
+diff --git a/backend/views/professional/_clinics.php b/backend/views/professional/_clinics.php
+new file mode 100644
+index 0000000..906bfd1
+--- /dev/null
++++ b/backend/views/professional/_clinics.php
+@@ -0,0 +1,159 @@
++<?php 
++
++use yii\helpers\Html;
++use yii\helpers\Url;
++use yii\grid\GridView;
++use yii\widgets\Pjax;
++?>
++
++<div class="professional-clinics">
++    <h3>Bond clinics to: <?=Html::encode($professional->name)?></h3>
++
++    <div class="mb-3">
++        <?= Html::button(
++            'Add Clinic',
++            [
++                'id' => 'add-clinic-btn',
++                'class' => 'btn btn-success',
++            ]
++        ) ?>
++    </div>
++
++    <?php
++    Pjax::begin([
++        'id' => 'clinics-grid-pjax',
++        'timeout' => 5000,
++        'enablePushState' => false,
++    ])
++    ?>
++
++    <?= GridView::widget([
++        'dataProvider' => $dataProvider,
++        'filterModel' => $searchModel,
++        'columns' => [
++            'id',
++            'description',
++        [
++        'class' => 'yii\grid\ActionColumn',
++        'template' => '{edit} {delete}',
++        
++        'buttons' => [
++            'edit' => function ($url, $model, $key) use ($professional) {
++                return Html::a(
++                    'edit',
++                    ['clinic/update', 'id' => $model->id],
++                    ['class' => 'btn btn-sm btn-primary edit-clinic-btn',
++                    'style' => 'margin-right: 5px;',
++                    'data-clinic-id' => $model->id,
++                ]);
++        },
++            'delete' => function ($url, $model, $key) use ($professional) {
++                return Html::a(
++                    'delete',
++                    ['professional/delete-relation', 'professionalId' => $professional->id, 'clinicId' => $model->id],
++                    [
++                        'class' => 'btn btn-sm btn-danger',
++                        'data-confirm' => 'Are you sure?',
++                        'data-method' => 'post',    
++                        'data-pjax' => '1',
++                    ]
++                );
++            },
++        ]
++    ]]]);
++    ?>
++    <?php Pjax::end(); ?>
++</div>
++
++<?php
++$addClinicUrl = Url::to(['professional/add-clinic', 'professionalId' => $professional->id]);
++$updateClinicBaseUrl = Url::to(['clinic/update']);
++
++$js = <<<JS
++    $(document).on('click', '#add-clinic-btn', function() {
++    console.log("Add clinic button clicked");
++    
++    $.ajax({
++        url: '$addClinicUrl',
++        type: 'GET',
++        dataType: 'html',
++        success: function(response) {
++            console.log("Form loaded successfully");
++            $('#clinics-content').html(response);
++        },
++        error: function(xhr, status, error) {
++            console.error("Failed to load form:");
++            console.error("Status:", status);
++            console.error("Error:", error);
++            console.error("Response:", xhr.responseText);
++            alert('Failed to load Add Clinic form: ' + error);
++        }
++    });
++});
++
++// Event handler for edit buttons
++$(document).on('click', '.edit-clinic-btn', function(e) {
++    e.preventDefault();
++    var clinicId = $(this).data('clinic-id');
++    $.ajax({
++        url: '$updateClinicBaseUrl' + '?id=' + clinicId,
++        type: 'GET',
++        success: function(response) {
++            $('#clinics-content').html(response);
++        },
++        error: function(xhr, status, error) {
++            alert('Failed to load Edit Clinic form.');
++            console.error("Error:", error);
++            console.error(xhr.responseText);
++        }
++    });
++});
++
++// Setup form submission handler (delegated to document since the form will be loaded dynamically)
++$(document).on('submit', '#add-clinic-form', function(e) {
++    e.preventDefault();
++    var formData = $(this).serialize();
++    
++    $.ajax({
++        url: $(this).attr('action'),
++        type: 'POST',
++        data: formData,
++        dataType: 'json',
++        success: function(response) {
++            console.log("Form submission response:", response);
++            
++            if (response && response.success) {
++                // Refresh the grid after successful submission
++                $.pjax.reload({container: '#clinics-grid-pjax'});
++                
++                // Display success message
++                alert(response.message || 'Clinic added');
++            } else {
++                // Display error message
++                alert(response.message || 'Error adding clinic');
++                console.error("Errors:", response.errors);
++            }
++        },
++        error: function(xhr, status, error) {
++            // The form submission was successful but there might be issues with the response
++            console.log("Form submission error handling");
++            
++            // Try to reload the grid anyway
++            try {
++                $.pjax.reload({container: '#clinics-grid-pjax'});
++                alert('Clinic appears to have been added successfully');
++            } catch(e) {
++                console.error("Error refreshing grid:", e);
++                // Fallback to page reload if pjax reload fails
++                location.reload();
++            }
++        }
++    });
++});
++
++$(document).on('pjax:success', '#clinics-grid-pjax', function() {
++    console.log('Pjax grid reload successful');
++});
++JS;
++$this->registerJs($js);
++?>
+\ No newline at end of file
+diff --git a/backend/views/professional/_form.php b/backend/views/professional/_form.php
+index 5dccabf..4af0a92 100755
+--- a/backend/views/professional/_form.php
++++ b/backend/views/professional/_form.php
+@@ -3,7 +3,6 @@
+ use yii\helpers\Html;
+ use yii\widgets\ActiveForm;
+ use yii\widgets\ActiveField;
+-use yii\jui\DatePicker;
+ 
+ /** @var yii\web\View $this */
+ /** @var common\models\Professional $model */
+@@ -14,23 +13,27 @@ use yii\jui\DatePicker;
+ 
+     <?php $form = ActiveForm::begin(); ?>
+ 
+-    <?= $form->field($model, 'name')->textInput(['maxlength' => true]) ?>
++    <?= $form->field($model, 'name')->textInput([
++        'maxlength' => true ]) ?>
+ 
+-    <?= $form->field($model, 'advice')->dropDownList([ 'CRM' => 'CRM', 'CRO' => 'CRO', 'CRN' => 'CRN', 'COREN' => 'COREN', ], ['prompt' => '']) ?>
++    <?= $form->field($model, 'advice')->dropDownList([ 
++        'CRM' => 'CRM', 
++        'CRO' => 'CRO', 
++        'CRN' => 'CRN', 
++        'COREN' => 'COREN', ], 
++        ['prompt' => '']) ?>
+ 
+-    <?= $form->field($model, 'advice_number')->textInput(['maxlength' => true]) ?>
++    <?= $form->field($model, 'advice_number')->textInput([
++        'maxlength' => true]) ?>
+ 
+-    <?= $form->field($model, 'birthdate')->widget(\yii\jui\DatePicker::className(), [
+-        'options' => ['class' => 'form-control'],
+-        'dateFormat' => 'php:Y-m-d',
+-        'clientOptions' => [
+-        'changeMonth' => true,
+-        'changeYear' => true,
+-        'yearRange' => '-100:+0',
+-        ],
+-    ]) ?>
++    <?= $form->field($model, 'birthdate')->input('date', [ 'class' => 'form-control',
++    'min' => (date('Y') - 100) . '-01-01',
++    'max' => (date('Y-m-d'))]) ?>
+ 
+-    <?= $form->field($model, 'status')->dropDownList([ 'active' => 'active', 'inactive' => 'inactive', ], ['prompt' => '']) ?>
++    <?= $form->field($model, 'status')->radioList([
++        1 => 'active',
++        0 => 'inactive'],
++    ) ?>
+ 
+     <div class="form-group">
+         <?= Html::submitButton('Save', ['class' => 'btn btn-success']) ?>
+diff --git a/backend/views/professional/index.php b/backend/views/professional/index.php
+index 7ff1bd9..cf63ead 100755
+--- a/backend/views/professional/index.php
++++ b/backend/views/professional/index.php
+@@ -34,7 +34,10 @@ $this->params['breadcrumbs'][] = $this->title;
+             'advice',
+             'advice_number',
+             'birthdate',
+-            'status',
++            ['attribute' => 'status',
++            'value' => function ($model) {
++                return $model->status ? 'active' : 'inactive';
++            }],
+             [
+                 'class' => ActionColumn::className(),
+                 'urlCreator' => function ($action, Professional $model, $key, $index, $column) {
+@@ -44,12 +47,5 @@ $this->params['breadcrumbs'][] = $this->title;
+         ],
+     ]); ?>
+ 
+-    <button>Cadastrar clínica</button>
+-    <div class="cadastro-clinicas">
+-        
+-
+-        
+-    </div>
+-
+ 
+ </div>
+diff --git a/backend/views/professional/view.php b/backend/views/professional/view.php
+index 02f1926..789a4bc 100755
+--- a/backend/views/professional/view.php
++++ b/backend/views/professional/view.php
+@@ -2,6 +2,8 @@
+ 
+ use yii\helpers\Html;
+ use yii\widgets\DetailView;
++use yii\bootstrap5\Modal;
++use yii\helpers\Url;
+ 
+ /** @var yii\web\View $this */
+ /** @var common\models\Professional $model */
+@@ -34,8 +36,65 @@ $this->params['breadcrumbs'][] = $this->title;
+             'advice',
+             'advice_number',
+             'birthdate',
+-            'status',
++           [
++            'attribute' => 'status',
++            'value' => $model->status ? 'active' : 'inactive',
++           ]
+         ],
+     ]) ?>
+ 
+-</div>
++    <div class="row">
++        <div class="col-md-12">
++            <?= Html::button(
++                'Bond Clinics',
++                [
++                    'id' => 'show-clinics-btn',
++                    'class' => 'btn btn-primary'
++                ]
++            )
++            ?>
++        </div>
++    </div>
++
++    <?php 
++        Modal::begin([
++            'id' =>'clinics-modal',
++            'title' => '<h4>Bond clinics</h4>',
++            'size' => 'lg',
++            'options' => [
++                'tabindex' => false,
++                'aria-labelledby' => 'clinics-modal-label',
++            ],
++            'bodyOptions' => [
++                'id' => 'clinics-content',
++            ],
++        ]);
++
++        Modal::end();
++    ?>
++
++    <?php
++
++    $clinicsUrl = Url::to(['professional/clinics', 'id' => $model->id]);
++
++    $js = <<<JS
++    $('#show-clinics-btn').on('click', function() {
++        $.ajax({
++            url:'$clinicsUrl',
++            type: 'GET',
++            success: function(response){
++                $('#clinics-content').html(response);
++                var myModal = new bootstrap.Modal(document.getElementById('clinics-modal'));
++                myModal.show();
++        },
++        error: function(xhr) {
++            alert('Failed to load clinics.');
++            console.error(xhr.responseText);
++        }
++    });
++});
++
++JS;
++
++$this->registerJs($js);
++?>
+\ No newline at end of file
+diff --git a/common/models/Clinic.php b/common/models/Clinic.php
+index 71c90e3..f51bd04 100755
+--- a/common/models/Clinic.php
++++ b/common/models/Clinic.php
+@@ -44,9 +44,13 @@ class Clinic extends \yii\db\ActiveRecord
+         ];
+     }
+ 
+-    public function getProfessional()
++    public function getProfessionals()
+     {
+-        return $this->hasOne(Professional::class, ['id'=>'professional_id']);
++        return $this->hasMany(Professional::class, ['id'=>'professional_id'])->viaTable('professional_clinic', ['clinic_id'=>'id']);
+     }
+ 
++    public function getProfessionalClinics()
++    {
++        return $this->hasMany(ProfessionalClinic::class, ['clinic_id'=>'id']);
++    }
+ }
+diff --git a/common/models/Professional.php b/common/models/Professional.php
+index 7ce47c3..96b27c4 100755
+--- a/common/models/Professional.php
++++ b/common/models/Professional.php
+@@ -11,8 +11,8 @@ use Yii;
+  * @property string $name
+  * @property string $advice
+  * @property string $advice_number
+- * @property string $birthdate
+- * @property string $status
++ * @property date $birthdate
++ * @property boolean $status
+  */
+ class Professional extends \yii\db\ActiveRecord
+ {
+@@ -25,9 +25,6 @@ class Professional extends \yii\db\ActiveRecord
+     const ADVICE_CRN = 'CRN';
+     const ADVICE_COREN = 'COREN';
+ 
+-    const STATUS_ACTIVE = 'active';
+-    const STATUS_INACTIVE = 'inactive';
+-
+     /**
+      * {@inheritdoc}
+      */
+@@ -44,11 +41,11 @@ class Professional extends \yii\db\ActiveRecord
+         return [
+             [['name', 'advice', 'advice_number', 'birthdate', 'status'], 'required'],
+             [['advice'], 'string'],
+-            [['birthdate'], 'date', 'format' => 'php:d-m-Y'],
+-            [['status'], 'string'],
++            [['advice_number'], 'integer'],
++            [['birthdate'], 'date', 'format' => 'php:Y-m-d'],
++            [['status'], 'boolean'],
+             [['name', 'advice_number'], 'string', 'max' => 255],
+             ['advice', 'in', 'range' => array_keys(self::optsAdvice())],
+-            ['status', 'in', 'range' => array_keys(self::optsStatus())],
+         ];
+     }
+ 
+@@ -142,52 +139,14 @@ class Professional extends \yii\db\ActiveRecord
+         $this->advice = self::ADVICE_COREN;
+     }
+ 
+-    /**
+-     * column status ENUM value labels
+-     * @return string[]
+-     */
+-    public static function optsStatus()
+-    {
+-        return [
+-            self::STATUS_ACTIVE => 'active',
+-            self::STATUS_INACTIVE => 'inactive',
+-        ];
+-    }
+-
+-    /**
+-     * @return string
+-     */
+-    public function displayStatus()
+-    {
+-        return self::optsStatus()[$this->status];
+-    }
+-
+-    /**
+-     * @return bool
+-     */
+-    public function isStatusActive()
+-    {
+-        return $this->status === self::STATUS_ACTIVE;
+-    }
+-
+-    public function setStatusToActive()
+-    {
+-        $this->status = self::STATUS_ACTIVE;
+-    }
+-
+-    public function isStatusInactive()
+-    {
+-        return $this->status === self::STATUS_INACTIVE;
+-    }
+-
+-    public function setStatusToInactive()
++    public function getClinics()
+     {
+-        $this->status = self::STATUS_INACTIVE;
++        return $this->hasMany(Clinic::class, ['clinic_id'=>'id'])->viaTable('professional_clinic', ['professional_id'=>'id']);
+     }
+ 
+-    public function getClinics()
++    public function getProfessionalClinics()
+     {
+-        return $this->hasMany(Clinic::class, ['professional_id'=>'id']);
++        return $this->hasMany(ProfessionalClinic::class, ['professional_id'=>'id']);
+     }
+ 
+ }
+diff --git a/common/models/ProfessionalClinic.php b/common/models/ProfessionalClinic.php
+new file mode 100644
+index 0000000..31a5a50
+--- /dev/null
++++ b/common/models/ProfessionalClinic.php
+@@ -0,0 +1,51 @@
++<?php
++
++namespace common\models;
++
++use Yii;
++use yii\db\ActiveRecord;
++
++class ProfessionalClinic extends ActiveRecord
++{
++
++    public static function tableName() 
++    {
++        return 'professional_clinic';
++    }
++
++    public function rules() 
++    {
++        return [
++            [['professional_id', 'clinic_id'], 'required'],
++            [['professional_id', 'clinic_id'], 'integer'],
++            [['professional_id', 'clinic_id'], 'unique', 'targetAttribute' => ['professional_id', 'clinic_id']],
++            [['professional_id'], 'exist', 'skipOnError' => true, 'targetClass' => Professional::class, 'targetAttribute' => ['professional_id' => 'id']],
++            [['clinic_id'], 'exist', 'skipOnError' => true, 'targetClass' => Clinic::class, 'targetAttribute' => ['clinic_id' => 'id']],
++
++        ];
++    }
++
++    public function getProfessional()
++    {
++        return $this->hasOne(Professional::class, ['id'=>'professional_id']);
++    }
++
++    public function getClinic()
++    {
++        return $this->hasOne(Clinic::class, ['id' => 'clinic_id']);
++    }
++
++    public function beforeSave($insert)
++    {
++        if (parent::beforeSave($insert)) {
++            if ($insert && !$this->created_at) {
++                $this->created_at = date('Y-m-d H:i:s');
++            }
++            return true;
++        }
++        return false;
++    }
++
++}
++
++?>
+\ No newline at end of file
+diff --git a/console/migrations/m250414_190850_create_professional_table.php b/console/migrations/m250414_190850_create_professional_table.php
+index 72f7e74..96bea4c 100644
+--- a/console/migrations/m250414_190850_create_professional_table.php
++++ b/console/migrations/m250414_190850_create_professional_table.php
+@@ -17,7 +17,7 @@ class m250414_190850_create_professional_table extends Migration
+             'name' => $this->string()->notNull(),
+             'advice' => $this->string()->notNull(),
+             'advice_number' => $this->string()->notNull(),
+-            'birthdate' => $this->timestamp()->notNull(),
++            'birthdate' => $this->date()->notNull(),
+             'status' => $this->boolean()->notNull(),
+             'created_at' => $this->timestamp() ]);
+             
+diff --git a/environments/dev/common/config/main-local.php b/environments/dev/common/config/main-local.php
+index d00db3e..872f33b 100755
+--- a/environments/dev/common/config/main-local.php
++++ b/environments/dev/common/config/main-local.php
+@@ -4,9 +4,9 @@ return [
+     'components' => [
+         'db' => [
+             'class' => \yii\db\Connection::class,
+-            'dsn' => 'mysql:host=localhost;dbname=yii2advanced',
+-            'username' => 'root',
+-            'password' => '',
++            'dsn' => 'mysql:host=localhost;dbname=test',
++            'username' => 'kalane',
++            'password' => 'larikal1212',
+             'charset' => 'utf8',
+         ],
+         'mailer' => [
+diff --git a/environments/dev/common/config/test-local.php b/environments/dev/common/config/test-local.php
+index a010219..7232934 100755
+--- a/environments/dev/common/config/test-local.php
++++ b/environments/dev/common/config/test-local.php
+@@ -3,7 +3,7 @@
+ return [
+     'components' => [
+         'db' => [
+-            'dsn' => 'mysql:host=localhost;dbname=yii2advanced_test',
++            'dsn' => 'mysql:host=localhost;dbname=test',
+         ],
+     ],
+ ];
+diff --git a/environments/prod/common/config/main-local.php b/environments/prod/common/config/main-local.php
+index da5a6d3..b51550b 100755
+--- a/environments/prod/common/config/main-local.php
++++ b/environments/prod/common/config/main-local.php
+@@ -4,9 +4,9 @@ return [
+     'components' => [
+         'db' => [
+             'class' => \yii\db\Connection::class,
+-            'dsn' => 'mysql:host=localhost;dbname=yii2advanced',
++            'dsn' => 'mysql:host=localhost;dbname=test',
+             'username' => 'root',
+-            'password' => '',
++            'password' => 'larikal1212',
+             'charset' => 'utf8',
+         ],
+         'mailer' => [
